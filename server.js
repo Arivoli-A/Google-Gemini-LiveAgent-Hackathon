@@ -3,7 +3,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { createServer } from 'http';
 import { WebSocketServer, WebSocket } from 'ws';
-import { GoogleGenAI, ThinkingLevel, Modality } from '@google/genai';
+import { GoogleGenAI,  Modality } from '@google/genai';  // ThinkingLevel,
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -52,7 +52,7 @@ app.post('/api/analyze', async (req, res) => {
           { inlineData: { mimeType: 'image/png', data: canvasImageData } },
         ],
       }],
-      config: { thinkingConfig: { thinkingLevel: ThinkingLevel.LOW } },
+     // config: { thinkingConfig: { thinkingLevel: ThinkingLevel.LOW } },
     });
     res.json({ text: response.text });
   } catch (err) {
