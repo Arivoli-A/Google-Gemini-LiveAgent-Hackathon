@@ -43,7 +43,7 @@ app.post('/api/analyze', async (req, res) => {
   try {
     const ai = getAIClient();
     const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
+      model: 'gemini-3-pro-preview',
       contents: [{
         role: 'user',
         parts: [
