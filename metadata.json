@@ -1,0 +1,7 @@
+{
+  "name": "ArtMaster AI Instructor",
+  "description": "A conversational AI art teacher that guides you step-by-step to recreate images on a digital canvas.",
+  "requestFramePermissions": [
+    "microphone"
+  ]
+}
