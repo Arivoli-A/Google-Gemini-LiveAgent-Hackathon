@@ -28,7 +28,7 @@ RUN npm install --omit=dev
 
 # Expose the port the app runs on
 # Cloud Run will override this with the PORT environment variable
-# check
+
 EXPOSE 3000
 
 # Start the server
