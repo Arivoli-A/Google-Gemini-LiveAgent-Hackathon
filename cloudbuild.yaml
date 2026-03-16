@@ -5,7 +5,7 @@ steps:
   args: [
     'build',
     '-t',
-    'us-central1-docker.pkg.dev/$PROJECT_ID/webapp-repo/webapp',
+    'us-central1-docker.pkg.dev/$PROJECT_ID/live-agent-web-repo/webapp',
     '.'
   ]
 
@@ -13,7 +13,7 @@ steps:
 - name: 'gcr.io/cloud-builders/docker'
   args: [
     'push',
-    'us-central1-docker.pkg.dev/$PROJECT_ID/webapp-repo/webapp'
+    'us-central1-docker.pkg.dev/$PROJECT_ID/live-agent-web-repo/webapp'
   ]
 
 # Deploy to Cloud Run
@@ -21,7 +21,7 @@ steps:
   entrypoint: gcloud
   args: [
     'run','deploy','webapp',
-    '--image','us-central1-docker.pkg.dev/$PROJECT_ID/webapp-repo/webapp',
+    '--image','us-central1-docker.pkg.dev/$PROJECT_ID/live-agent-web-repo/webapp',
     '--region','us-central1',
     '--platform','managed',
     '--allow-unauthenticated'
