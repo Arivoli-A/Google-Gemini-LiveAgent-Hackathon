@@ -1,24 +1,23 @@
 steps:
- 
-# Build Docker image with Vertex AI config baked in
+
+# Build Docker image
 - name: 'gcr.io/cloud-builders/docker'
   args: [
     'build',
-    '--build-arg', 'USE_VERTEX=true',
-    '--build-arg', 'VERTEX_PROJECT=$PROJECT_ID',
-    '--build-arg', 'VERTEX_LOCATION=us-central1',
     '-t', 'us-central1-docker.pkg.dev/$PROJECT_ID/live-agent-web-repo/webapp',
     '.'
   ]
- 
+
 # Push image
 - name: 'gcr.io/cloud-builders/docker'
   args: [
     'push',
     'us-central1-docker.pkg.dev/$PROJECT_ID/live-agent-web-repo/webapp'
   ]
- 
-# Deploy to Cloud Run — no API key env var needed, IAM handles auth
+
+# Deploy to Cloud Run
+# USE_VERTEX=true tells server.js to use Vertex AI with IAM (ADC) — no API key needed
+# session-affinity is required for WebSocket connections to stick to the same instance
 - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
   entrypoint: gcloud
   args: [
@@ -27,5 +26,7 @@ steps:
     '--region', 'us-central1',
     '--platform', 'managed',
     '--allow-unauthenticated',
+    '--session-affinity',
+    '--timeout', '3600',
+    '--set-env-vars', 'USE_VERTEX=true,VERTEX_PROJECT=$PROJECT_ID,VERTEX_LOCATION=us-central1',
   ]
- 

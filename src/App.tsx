@@ -20,25 +20,10 @@ import {
 } from 'lucide-react';
 import { Stage, Layer, Line, Rect } from 'react-konva';
 import { motion, AnimatePresence } from 'motion/react';
-import { GoogleGenAI, ThinkingLevel, Modality, Type } from "@google/genai";
+// Gemini SDK no longer called directly from browser - all AI goes through server.js proxy
 import { cn } from './lib/utils';
 import { Message, BrushSettings, ColorMixerState, DEFAULT_PALETTE } from './types';
 import { AudioManager } from './services/audioManager';
-
-// --- AI Client Helper ---
-// Automatically uses Vertex AI (IAM auth) when USE_VERTEX=true,
-// otherwise falls back to API key for local dev / AI Studio.
-function getAIClient() {
-  if (process.env.USE_VERTEX === 'true') {
-    return new GoogleGenAI({
-      vertexai: true,
-      project: process.env.VERTEX_PROJECT || '',
-      location: process.env.VERTEX_LOCATION || 'us-central1',
-    });
-  }
-  const apiKey = process.env.API_KEY || process.env.GEMINI_API_KEY || '';
-  return new GoogleGenAI({ apiKey });
-}
 
 export default function App() {
   // --- State ---
@@ -64,8 +49,8 @@ export default function App() {
   
   // Live Voice State
   const [isLive, setIsLive] = useState(false);
-  const [liveSession, setLiveSession] = useState<any>(null);
-  const liveSessionRef = useRef<any>(null);
+  const [liveSession, setLiveSession] = useState<WebSocket | null>(null);
+  const liveSessionRef = useRef<WebSocket | null>(null);
   const audioManager = useRef<AudioManager>(new AudioManager());
   const frameInterval = useRef<any>(null);
   const autoAnalysisInterval = useRef<any>(null);
@@ -231,147 +216,130 @@ export default function App() {
     setTool('brush');
   };
 
-  // --- Live Voice Logic ---
+  // --- Live Voice Logic (proxied through server WebSocket) ---
   const startLiveSession = async () => {
     if (!targetImage) {
       setMessages(prev => [...prev, { role: "model", text: "Please upload a target image first so I can see what we're aiming for!" }]);
       return;
     }
 
-    if (window.aistudio && !(await window.aistudio.hasSelectedApiKey())) {
-      await window.aistudio.openSelectKey();
-      setHasApiKey(true);
-    }
-
     try {
-      const ai = getAIClient();
+      // Connect to our server-side WebSocket proxy — server holds the real Gemini session
+      const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const ws = new WebSocket(`${wsProtocol}//${window.location.host}/ws/live`);
 
-      const getCurrentStateTool = {
-        name: "get_current_state",
-        description: "Get the current brush settings and color mixer state.",
-        parameters: { type: Type.OBJECT, properties: {} }
+      ws.onopen = () => {
+        console.log("Connected to Live proxy");
+        // Send start message with system instruction and target image
+        const systemInstruction = `You are an AI Art Instructor in a real-time voice session. 
+        You are helping a user recreate a target image. 
+        You can see the user's canvas in real-time (frames sent every 2s).
+        
+        CRITICAL: You MUST use the 'get_current_state' tool to check the user's active brush color, type, and what's in their color mixer before giving specific mixing or brush advice.
+        
+        Your goal is to provide immediate, helpful, and HIGHLY ENCOURAGING feedback via voice.
+        Be a warm, patient, and inspiring mentor. Use phrases like "You're doing great!", "I love that stroke!", "Don't worry about mistakes, they're part of the process."
+        
+        Be proactive! If you see the user struggling, making a mistake, or just pausing, speak up and offer a detailed tip.
+        Explain the "why" behind your advice. For example, "Let's add a bit more blue to that green to make it look more like a deep forest shadow."
+        
+        Keep your responses natural for a conversation, but don't be afraid to be descriptive.
+        Guide them on color mixing, brush strokes, composition, and even the mood of the piece.
+        If the user asks "how does this look?", look at the latest canvas frame and compare it to the target image in detail.
+        You can also see the target image.`;
+
+        ws.send(JSON.stringify({
+          type: 'start',
+          systemInstruction,
+          targetImageData: targetImage!.split(',')[1],
+        }));
       };
 
-      const systemInstruction = `You are an AI Art Instructor in a real-time voice session. 
-      You are helping a user recreate a target image. 
-      You can see the user's canvas in real-time (frames sent every 2s).
-      
-      CRITICAL: You MUST use the 'get_current_state' tool to check the user's active brush color, type, and what's in their color mixer before giving specific mixing or brush advice.
-      
-      Your goal is to provide immediate, helpful, and HIGHLY ENCOURAGING feedback via voice.
-      Be a warm, patient, and inspiring mentor. Use phrases like "You're doing great!", "I love that stroke!", "Don't worry about mistakes, they're part of the process."
-      
-      Be proactive! If you see the user struggling, making a mistake, or just pausing, speak up and offer a detailed tip.
-      Explain the "why" behind your advice. For example, "Let's add a bit more blue to that green to make it look more like a deep forest shadow."
-      
-      Keep your responses natural for a conversation, but don't be afraid to be descriptive.
-      Guide them on color mixing, brush strokes, composition, and even the mood of the piece.
-      If the user asks "how does this look?", look at the latest canvas frame and compare it to the target image in detail.
-      You can also see the target image.`;
-
-      const sessionPromise = ai.live.connect({
-        model: "gemini-2.5-flash-native-audio-preview-12-2025",
-        config: {
-          responseModalities: [Modality.AUDIO],
-          systemInstruction,
-          tools: [{ functionDeclarations: [getCurrentStateTool] }],
-          outputAudioTranscription: {}, // Enable transcription
-          speechConfig: {
-            voiceConfig: { prebuiltVoiceConfig: { voiceName: "Zephyr" } }
-          }
-        },
-        callbacks: {
-          onopen: () => {
-            console.log("Live session connection opened");
-          },
-          onclose: () => {
-            stopLiveSession();
-          },
-          onerror: (e) => {
-            console.error("Live Error:", e);
-            stopLiveSession();
-          },
-          onmessage: (message) => {
-            // Handle Interruption
-            if (message.serverContent?.interrupted) {
-              audioManager.current.stopPlayback();
-            }
-
-            // Handle Audio Output - Iterate through all parts
-            message.serverContent?.modelTurn?.parts?.forEach(part => {
-              if (part.inlineData?.data) {
-                audioManager.current.playAudioChunk(part.inlineData.data);
+      ws.onmessage = (event) => {
+        const msg = JSON.parse(event.data);
+        switch (msg.type) {
+          case 'audio':
+            audioManager.current.playAudioChunk(msg.data);
+            break;
+          case 'transcription':
+            setMessages(prev => [...prev, { role: "model", text: msg.text }]);
+            break;
+          case 'tool_call':
+            // Respond to get_current_state tool calls with current brush/mixer state
+            msg.calls.forEach((call: { name: string; id: string }) => {
+              if (call.name === 'get_current_state' && liveSessionRef.current) {
+                (liveSessionRef.current as WebSocket).send(JSON.stringify({
+                  type: 'tool_response',
+                  functionResponses: [{
+                    name: 'get_current_state',
+                    id: call.id,
+                    response: {
+                      brush: { type: brush.type, size: brush.size, color: brush.color },
+                      mixer: mixer.drops,
+                    },
+                  }],
+                }));
               }
             });
-
-            // Handle Transcription (Match Voice to Text)
-            const transcription = message.serverContent?.modelTurn?.parts.find(p => p.text)?.text;
-            if (transcription) {
-              setMessages(prev => [...prev, { role: "model", text: transcription }]);
-            }
-
-            // Handle Tool Calls
-            const toolCalls = message.serverContent?.modelTurn?.parts.filter(p => p.functionCall);
-            if (toolCalls && toolCalls.length > 0 && liveSessionRef.current) {
-              toolCalls.forEach(tc => {
-                if (tc.functionCall?.name === "get_current_state") {
-                  liveSessionRef.current.sendToolResponse({
-                    functionResponses: [{
-                      name: "get_current_state",
-                      id: tc.functionCall.id,
-                      response: {
-                        brush: { type: brush.type, size: brush.size, color: brush.color },
-                        mixer: mixer.drops
-                      }
-                    }]
-                  });
-                }
-              });
-            }
-          }
+            break;
+          case 'interrupted':
+            audioManager.current.stopPlayback();
+            break;
+          case 'error':
+            console.error('Live proxy error:', msg.message);
+            stopLiveSession();
+            break;
+          case 'closed':
+            stopLiveSession();
+            break;
         }
-      });
+      };
 
-      const session = await sessionPromise;
-      setLiveSession(session);
-      liveSessionRef.current = session;
+      ws.onerror = (e) => {
+        console.error("WebSocket error:", e);
+        stopLiveSession();
+      };
+
+      ws.onclose = () => {
+        stopLiveSession();
+      };
+
+      liveSessionRef.current = ws;
+      setLiveSession(ws);
       setIsLive(true);
 
-      // Initialize Session Assets & Streams
       await audioManager.current.resumeAudioContext();
-      
-      // Send target image as first visual context
-      session.sendRealtimeInput({
-        media: { data: targetImage.split(',')[1], mimeType: 'image/png' }
-      });
-      
-      // Start streaming canvas frames
+
+      // Stream canvas frames to server every 2s
       frameInterval.current = setInterval(() => {
-        if (stageRef.current && liveSessionRef.current) {
+        if (stageRef.current && liveSessionRef.current && (liveSessionRef.current as WebSocket).readyState === WebSocket.OPEN) {
           const canvasData = stageRef.current.toDataURL({ pixelRatio: 0.5 });
-          liveSessionRef.current.sendRealtimeInput({
-            media: { data: canvasData.split(',')[1], mimeType: 'image/png' }
-          });
+          (liveSessionRef.current as WebSocket).send(JSON.stringify({
+            type: 'image',
+            data: canvasData.split(',')[1],
+          }));
         }
       }, 2000);
 
-      // Start microphone
+      // Stream microphone audio to server
       audioManager.current.startMicrophone((base64) => {
-        if (liveSessionRef.current) {
-          liveSessionRef.current.sendRealtimeInput({
-            media: { data: base64, mimeType: 'audio/pcm;rate=16000' }
-          });
+        if (liveSessionRef.current && (liveSessionRef.current as WebSocket).readyState === WebSocket.OPEN) {
+          (liveSessionRef.current as WebSocket).send(JSON.stringify({
+            type: 'audio',
+            data: base64,
+          }));
         }
       }, (vol) => {
         setVoiceVolume(vol);
       });
 
-      // Start Auto-Analysis every 1 minute
+      // Auto-analysis every 1 minute
       autoAnalysisInterval.current = setInterval(() => {
         if (liveSessionRef.current) {
-          askInstructor(true); // Call with 'isAuto' flag
+          askInstructor(true);
         }
       }, 60000);
+
     } catch (error) {
       console.error("Failed to start live session:", error);
       setIsLive(false);
@@ -385,7 +353,11 @@ export default function App() {
     setVoiceVolume(0);
     if (liveSessionRef.current) {
       try {
-        liveSessionRef.current.close();
+        const ws = liveSessionRef.current as WebSocket;
+        if (ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({ type: 'stop' }));
+          ws.close();
+        }
       } catch (e) {
         console.error("Error closing session:", e);
       }
@@ -424,9 +396,8 @@ export default function App() {
 
     setIsThinking(true);
     try {
-      const ai = getAIClient();
       const canvasDataUrl = stageRef.current.toDataURL();
-      
+
       const prompt = `You are an AI Art Instructor. Analyze the difference between the Target Image and the Current Canvas.
       Provide a VERY ELABORATE, detailed, and step-by-step guide for the user.
       
@@ -442,35 +413,31 @@ export default function App() {
       Be encouraging but extremely thorough. This text will be read by the user.
       ${isAuto ? "NOTE: This is an automatic periodic check. Only provide significant new advice if the user has made progress or needs a course correction." : ""}`;
 
-      const response = await ai.models.generateContent({
-        model: "gemini-3-flash-preview",
-        contents: [
-          {
-            parts: [
-              { text: prompt },
-              { inlineData: { mimeType: "image/png", data: targetImage.split(',')[1] } },
-              { inlineData: { mimeType: "image/png", data: canvasDataUrl.split(',')[1] } }
-            ]
-          }
-        ],
-        config: {
-          thinkingConfig: { thinkingLevel: ThinkingLevel.LOW }
-        }
+      // Proxied through server — Vertex IAM auth happens server-side
+      const analyzeRes = await fetch('/api/analyze', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          prompt,
+          targetImageData: targetImage!.split(',')[1],
+          canvasImageData: canvasDataUrl.split(',')[1],
+        }),
       });
+      if (!analyzeRes.ok) throw new Error(`Analyze API error: ${analyzeRes.status}`);
+      const analyzeData = await analyzeRes.json();
+      const elaborateText = analyzeData.text || "I'm having a bit of trouble seeing the canvas. Let's try another stroke!";
 
-      const elaborateText = response.text || "I'm having a bit of trouble seeing the canvas. Let's try another stroke!";
-      
-      // Only add to chat if it's manual OR if the text is significantly different/new
-      // For simplicity, we'll add it every time for now as requested by user "every 10 sec"
       setMessages(prev => [...prev, { role: "model", text: elaborateText }]);
 
-      // Now, if we have a live session, ask it to summarize briefly via voice
+      // Send brief voice summary via WebSocket proxy
       if (currentSession) {
-        currentSession.sendRealtimeInput({
-          text: `I just gave the user this elaborate advice in the chat: "${elaborateText}". 
-          Please provide a VERY BRIEF (1-2 sentences) voice summary of this advice to the user now. 
-          Start with something like "I've added some detailed steps to the chat..."`
-        });
+        const ws = currentSession as WebSocket;
+        if (ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({
+            type: 'text',
+            data: `I just gave the user this elaborate advice in the chat: "${elaborateText}". Please provide a VERY BRIEF (1-2 sentences) voice summary. Start with "I've added some detailed steps to the chat..."`,
+          }));
+        }
       }
     } catch (error) {
       console.error("AI Error:", error);
