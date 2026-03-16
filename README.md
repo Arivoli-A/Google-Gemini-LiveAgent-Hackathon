@@ -12,7 +12,7 @@ ArtMaster AI is a full-stack web application designed to provide real-time, inte
 - **Visual Feedback**: Real-time "Vision Active" and "Voice Active" indicators provide visual confirmation of the AI's engagement.
 
 ## 🏗️ Architecture
-
+![ARCHITECTURE](./working.png)
 The application follows a modern, frontend-heavy architecture optimized for low-latency streaming.
 
 - **Frontend**: React (SPA) with Vite for fast builds and HMR.
