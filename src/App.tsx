@@ -26,7 +26,7 @@ import { Message, BrushSettings, ColorMixerState, DEFAULT_PALETTE } from './type
 import { AudioManager } from './services/audioManager';
 
 // --- AI Service ---
-const genAI = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "" });
+// genAI is initialized inside functions using the runtime-fetched apiKey
 
 export default function App() {
   // --- State ---
@@ -48,6 +48,7 @@ export default function App() {
   const [isThinking, setIsThinking] = useState(false);
   const [canvasSize, setCanvasSize] = useState({ width: 600, height: 600 });
   const [voiceVolume, setVoiceVolume] = useState(0);
+  const [apiKey, setApiKey] = useState<string>("");
   
   // Live Voice State
   const [isLive, setIsLive] = useState(false);
@@ -73,6 +74,17 @@ export default function App() {
     };
     window.addEventListener('resize', updateSize);
     updateSize();
+
+    // Fetch runtime config
+    fetch('/api/config')
+      .then(res => res.json())
+      .then(data => {
+        if (data.GEMINI_API_KEY) {
+          setApiKey(data.GEMINI_API_KEY);
+        }
+      })
+      .catch(err => console.error("Failed to fetch runtime config:", err));
+
     return () => window.removeEventListener('resize', updateSize);
   }, []);
 
@@ -211,12 +223,18 @@ export default function App() {
 
   // --- Live Voice Logic ---
   const startLiveSession = async () => {
+    if (!apiKey) {
+      setMessages(prev => [...prev, { role: "model", text: "Gemini API Key is missing. Please check your environment variables." }]);
+      return;
+    }
+
     if (!targetImage) {
       setMessages(prev => [...prev, { role: "model", text: "Please upload a target image first so I can see what we're aiming for!" }]);
       return;
     }
 
     try {
+      const genAI = new GoogleGenAI({ apiKey });
       const getCurrentStateTool = {
         name: "get_current_state",
         description: "Get the current brush settings and color mixer state.",
@@ -363,6 +381,13 @@ export default function App() {
 
   // --- AI Instructor Logic ---
   const askInstructor = async (isAuto = false) => {
+    if (!apiKey) {
+      if (!isAuto) {
+        setMessages(prev => [...prev, { role: "model", text: "Gemini API Key is missing. Please check your environment variables." }]);
+      }
+      return;
+    }
+
     if (!targetImage) {
       if (!isAuto) {
         setMessages(prev => [...prev, { role: "model", text: "Please upload a target image first so I can see what we're aiming for!" }]);
@@ -407,6 +432,7 @@ export default function App() {
       Be encouraging but extremely thorough. This text will be read by the user.
       ${isAuto ? "NOTE: This is an automatic periodic check. Only provide significant new advice if the user has made progress or needs a course correction." : ""}`;
 
+      const genAI = new GoogleGenAI({ apiKey });
       const response = await genAI.models.generateContent({
         model: "gemini-3-flash-preview",
         contents: [
