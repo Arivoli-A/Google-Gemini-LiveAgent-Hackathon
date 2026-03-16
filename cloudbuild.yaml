@@ -1,28 +1,31 @@
 steps:
-
-# Build Docker image
+ 
+# Build Docker image with Vertex AI config baked in
 - name: 'gcr.io/cloud-builders/docker'
   args: [
     'build',
-    '-t',
-    'us-central1-docker.pkg.dev/$PROJECT_ID/live-agent-web-repo/webapp',
+    '--build-arg', 'USE_VERTEX=true',
+    '--build-arg', 'VERTEX_PROJECT=$PROJECT_ID',
+    '--build-arg', 'VERTEX_LOCATION=us-central1',
+    '-t', 'us-central1-docker.pkg.dev/$PROJECT_ID/live-agent-web-repo/webapp',
     '.'
   ]
-
+ 
 # Push image
 - name: 'gcr.io/cloud-builders/docker'
   args: [
     'push',
     'us-central1-docker.pkg.dev/$PROJECT_ID/live-agent-web-repo/webapp'
   ]
-
-# Deploy to Cloud Run
+ 
+# Deploy to Cloud Run — no API key env var needed, IAM handles auth
 - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
   entrypoint: gcloud
   args: [
-    'run','deploy','webapp',
-    '--image','us-central1-docker.pkg.dev/$PROJECT_ID/live-agent-web-repo/webapp',
-    '--region','us-central1',
-    '--platform','managed',
-    '--allow-unauthenticated'
+    'run', 'deploy', 'webapp',
+    '--image', 'us-central1-docker.pkg.dev/$PROJECT_ID/live-agent-web-repo/webapp',
+    '--region', 'us-central1',
+    '--platform', 'managed',
+    '--allow-unauthenticated',
   ]
+ 

@@ -8,8 +8,13 @@ export default defineConfig(({mode}) => {
   return {
     plugins: [react(), tailwindcss()],
     define: {
+      // AI Studio (local dev)
       'process.env.GEMINI_API_KEY': JSON.stringify(env.GEMINI_API_KEY),
       'process.env.API_KEY': JSON.stringify(env.API_KEY),
+      // Vertex AI (GCP)
+      'process.env.USE_VERTEX': JSON.stringify(env.USE_VERTEX),
+      'process.env.VERTEX_PROJECT': JSON.stringify(env.VERTEX_PROJECT),
+      'process.env.VERTEX_LOCATION': JSON.stringify(env.VERTEX_LOCATION || 'us-central1'),
     },
     resolve: {
       alias: {
@@ -17,8 +22,6 @@ export default defineConfig(({mode}) => {
       },
     },
     server: {
-      // HMR is disabled in AI Studio via DISABLE_HMR env var.
-      // Do not modifyâfile watching is disabled to prevent flickering during agent edits.
       hmr: process.env.DISABLE_HMR !== 'true',
     },
   };

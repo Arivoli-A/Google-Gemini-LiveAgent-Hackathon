@@ -25,8 +25,20 @@ import { cn } from './lib/utils';
 import { Message, BrushSettings, ColorMixerState, DEFAULT_PALETTE } from './types';
 import { AudioManager } from './services/audioManager';
 
-// --- AI Service ---
-// genAI is initialized inside functions to use the latest API key
+// --- AI Client Helper ---
+// Automatically uses Vertex AI (IAM auth) when USE_VERTEX=true,
+// otherwise falls back to API key for local dev / AI Studio.
+function getAIClient() {
+  if (process.env.USE_VERTEX === 'true') {
+    return new GoogleGenAI({
+      vertexai: true,
+      project: process.env.VERTEX_PROJECT || '',
+      location: process.env.VERTEX_LOCATION || 'us-central1',
+    });
+  }
+  const apiKey = process.env.API_KEY || process.env.GEMINI_API_KEY || '';
+  return new GoogleGenAI({ apiKey });
+}
 
 export default function App() {
   // --- State ---
@@ -232,8 +244,7 @@ export default function App() {
     }
 
     try {
-      const apiKey = process.env.API_KEY || process.env.GEMINI_API_KEY || "";
-      const ai = new GoogleGenAI({ apiKey });
+      const ai = getAIClient();
 
       const getCurrentStateTool = {
         name: "get_current_state",
@@ -413,8 +424,7 @@ export default function App() {
 
     setIsThinking(true);
     try {
-      const apiKey = process.env.API_KEY || process.env.GEMINI_API_KEY || "";
-      const ai = new GoogleGenAI({ apiKey });
+      const ai = getAIClient();
       const canvasDataUrl = stageRef.current.toDataURL();
       
       const prompt = `You are an AI Art Instructor. Analyze the difference between the Target Image and the Current Canvas.
