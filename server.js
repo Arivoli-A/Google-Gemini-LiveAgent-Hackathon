@@ -45,6 +45,7 @@ app.post('/api/analyze', async (req, res) => {
     const response = await ai.models.generateContent({
       model: 'gemini-2.5-flash',
       contents: [{
+        role: 'user',
         parts: [
           { text: prompt },
           { inlineData: { mimeType: 'image/png', data: targetImageData } },
