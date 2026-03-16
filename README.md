@@ -42,31 +42,23 @@ The application follows a modern, frontend-heavy architecture optimized for low-
 
 ## ☁️ Deployment to GCP (Cloud Run)
 
-This application is containerized and ready for a modern serverless deployment using the Google Cloud ecosystem.
-
-### 🏗️ The Deployment Pipeline
-
-The deployment follows a three-step pipeline:
-1.  **Google Cloud Build**: Acts as the CI/CD engine. It takes your source code and the `Dockerfile`, then executes the build process in a secure, managed environment.
-2.  **Google Artifact Registry**: Serves as the private repository for your container images. Once Cloud Build finishes, it pushes the resulting image here.
-3.  **Google Cloud Run**: The final execution environment. It pulls the image from Artifact Registry and runs it as a serverless, auto-scaling service.
+This application is containerized and ready for deployment to Google Cloud Run.
 
 ### 1. Prerequisites
 - A Google Cloud Project with Billing enabled.
 - [Google Cloud SDK](https://cloud.google.com/sdk/docs/install) installed and initialized.
-- **APIs Enabled**: Ensure the Cloud Build, Artifact Registry, and Cloud Run APIs are enabled in your project.
+- Docker installed locally (optional, if using Cloud Build).
 
-### 2. Build and Push to Artifact Registry
-Use Cloud Build to build your image and store it in Artifact Registry:
+### 2. Build and Push the Image
+You can use Google Cloud Build to build and push the image directly to Google Artifact Registry:
 
 ```bash
 # Replace [PROJECT_ID] with your actual GCP Project ID
-# Replace [REPO_NAME] with your Artifact Registry repository name
 gcloud builds submit --tag gcr.io/[PROJECT_ID]/artmaster-ai
 ```
 
 ### 3. Deploy to Cloud Run
-Deploy the image from Artifact Registry to a live Cloud Run service:
+Once the image is pushed, deploy it to Cloud Run:
 
 ```bash
 gcloud run deploy artmaster-ai \
@@ -85,6 +77,7 @@ gcloud run deploy artmaster-ai \
 
 ## 🔍 Findings & Learnings
 
+- **Model Naming Conventions**: During development, it was discovered that using `-latest` aliases (e.g., `gemini-3-flash-latest`) can sometimes lead to 404 errors in preview environments. Explicitly using `-preview` versions (e.g., `gemini-3-flash-preview`) ensured stability.
 - **Live Session Race Conditions**: Initializing the microphone and camera streams inside the `onopen` callback of the Live API can lead to race conditions where the session object isn't yet fully assigned to a React `ref`. Moving the initialization logic to follow the resolution of the `connect` promise proved more robust.
 - **Audio Resampling**: The Gemini Live API expects 16kHz PCM input but returns 24kHz PCM output. The `AudioManager` had to be specifically tuned to handle these different sample rates within the same `AudioContext` to prevent "chipmunk" or distorted audio.
 - **Prompt Engineering for Mentorship**: Designing the `systemInstruction` to be "warm and proactive" significantly improved user engagement. Instructing the AI to explain the "why" behind color mixing advice made the tool feel more like an educational platform than just a drawing app.

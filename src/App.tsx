@@ -26,7 +26,7 @@ import { Message, BrushSettings, ColorMixerState, DEFAULT_PALETTE } from './type
 import { AudioManager } from './services/audioManager';
 
 // --- AI Service ---
-// genAI is initialized inside functions using the runtime-fetched apiKey
+// genAI is initialized inside functions to use the latest API key
 
 export default function App() {
   // --- State ---
@@ -48,7 +48,7 @@ export default function App() {
   const [isThinking, setIsThinking] = useState(false);
   const [canvasSize, setCanvasSize] = useState({ width: 600, height: 600 });
   const [voiceVolume, setVoiceVolume] = useState(0);
-  const [apiKey, setApiKey] = useState<string>("");
+  const [hasApiKey, setHasApiKey] = useState(true); // Default to true, check on mount
   
   // Live Voice State
   const [isLive, setIsLive] = useState(false);
@@ -75,15 +75,13 @@ export default function App() {
     window.addEventListener('resize', updateSize);
     updateSize();
 
-    // Fetch runtime config
-    fetch('/api/config')
-      .then(res => res.json())
-      .then(data => {
-        if (data.GEMINI_API_KEY) {
-          setApiKey(data.GEMINI_API_KEY);
-        }
-      })
-      .catch(err => console.error("Failed to fetch runtime config:", err));
+    const checkKey = async () => {
+      if (window.aistudio) {
+        const hasKey = await window.aistudio.hasSelectedApiKey();
+        setHasApiKey(hasKey);
+      }
+    };
+    checkKey();
 
     return () => window.removeEventListener('resize', updateSize);
   }, []);
@@ -223,18 +221,20 @@ export default function App() {
 
   // --- Live Voice Logic ---
   const startLiveSession = async () => {
-    if (!apiKey) {
-      setMessages(prev => [...prev, { role: "model", text: "Gemini API Key is missing. Please check your environment variables." }]);
-      return;
-    }
-
     if (!targetImage) {
       setMessages(prev => [...prev, { role: "model", text: "Please upload a target image first so I can see what we're aiming for!" }]);
       return;
     }
 
+    if (window.aistudio && !(await window.aistudio.hasSelectedApiKey())) {
+      await window.aistudio.openSelectKey();
+      setHasApiKey(true);
+    }
+
     try {
-      const genAI = new GoogleGenAI({ apiKey });
+      const apiKey = process.env.API_KEY || process.env.GEMINI_API_KEY || "";
+      const ai = new GoogleGenAI({ apiKey });
+
       const getCurrentStateTool = {
         name: "get_current_state",
         description: "Get the current brush settings and color mixer state.",
@@ -258,8 +258,8 @@ export default function App() {
       If the user asks "how does this look?", look at the latest canvas frame and compare it to the target image in detail.
       You can also see the target image.`;
 
-      const sessionPromise = genAI.live.connect({
-        model: "gemini-2.5-flash-native-audio-preview-09-2025",
+      const sessionPromise = ai.live.connect({
+        model: "gemini-2.5-flash-native-audio-preview-12-2025",
         config: {
           responseModalities: [Modality.AUDIO],
           systemInstruction,
@@ -281,8 +281,13 @@ export default function App() {
             stopLiveSession();
           },
           onmessage: (message) => {
+            // Handle Interruption
+            if (message.serverContent?.interrupted) {
+              audioManager.current.stopPlayback();
+            }
+
             // Handle Audio Output - Iterate through all parts
-            message.serverContent?.modelTurn?.parts.forEach(part => {
+            message.serverContent?.modelTurn?.parts?.forEach(part => {
               if (part.inlineData?.data) {
                 audioManager.current.playAudioChunk(part.inlineData.data);
               }
@@ -381,13 +386,6 @@ export default function App() {
 
   // --- AI Instructor Logic ---
   const askInstructor = async (isAuto = false) => {
-    if (!apiKey) {
-      if (!isAuto) {
-        setMessages(prev => [...prev, { role: "model", text: "Gemini API Key is missing. Please check your environment variables." }]);
-      }
-      return;
-    }
-
     if (!targetImage) {
       if (!isAuto) {
         setMessages(prev => [...prev, { role: "model", text: "Please upload a target image first so I can see what we're aiming for!" }]);
@@ -415,6 +413,8 @@ export default function App() {
 
     setIsThinking(true);
     try {
+      const apiKey = process.env.API_KEY || process.env.GEMINI_API_KEY || "";
+      const ai = new GoogleGenAI({ apiKey });
       const canvasDataUrl = stageRef.current.toDataURL();
       
       const prompt = `You are an AI Art Instructor. Analyze the difference between the Target Image and the Current Canvas.
@@ -432,8 +432,7 @@ export default function App() {
       Be encouraging but extremely thorough. This text will be read by the user.
       ${isAuto ? "NOTE: This is an automatic periodic check. Only provide significant new advice if the user has made progress or needs a course correction." : ""}`;
 
-      const genAI = new GoogleGenAI({ apiKey });
-      const response = await genAI.models.generateContent({
+      const response = await ai.models.generateContent({
         model: "gemini-3-flash-preview",
         contents: [
           {
@@ -508,9 +507,19 @@ export default function App() {
           <div className="flex items-center justify-between mb-1.5">
             <span className="text-[9px] font-bold uppercase tracking-widest opacity-40">Target</span>
             {!isLive && (
-              <div className="flex items-center gap-1.5 text-[9px] text-blue-600 font-medium">
-                <Volume2 className="w-2.5 h-2.5" />
-                <span>Open in new tab for audio</span>
+              <div className="flex flex-col items-end gap-1">
+                {!hasApiKey && (
+                  <button 
+                    onClick={() => window.aistudio.openSelectKey()}
+                    className="flex items-center gap-1 px-2 py-0.5 bg-blue-600 text-white rounded text-[8px] font-bold uppercase tracking-wider hover:bg-blue-700 transition-colors"
+                  >
+                    Select API Key
+                  </button>
+                )}
+                <div className="flex items-center gap-1.5 text-[9px] text-blue-600 font-medium">
+                  <Volume2 className="w-2.5 h-2.5" />
+                  <span>Open in new tab for audio</span>
+                </div>
               </div>
             )}
           </div>

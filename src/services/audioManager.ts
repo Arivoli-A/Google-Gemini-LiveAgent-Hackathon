@@ -83,6 +83,7 @@ export class AudioManager {
 
   // Playback logic
   private nextStartTime = 0;
+  private activeSources: AudioBufferSourceNode[] = [];
   
   playAudioChunk(base64Data: string) {
     if (!this.audioContext) {
@@ -110,6 +111,11 @@ export class AudioManager {
     source.buffer = audioBuffer;
     source.connect(this.audioContext.destination);
     
+    this.activeSources.push(source);
+    source.onended = () => {
+      this.activeSources = this.activeSources.filter(s => s !== source);
+    };
+
     const currentTime = this.audioContext.currentTime;
     if (this.nextStartTime < currentTime) {
       this.nextStartTime = currentTime;
@@ -117,5 +123,17 @@ export class AudioManager {
     
     source.start(this.nextStartTime);
     this.nextStartTime += audioBuffer.duration;
+  }
+
+  stopPlayback() {
+    this.activeSources.forEach(s => {
+      try {
+        s.stop();
+      } catch (e) {
+        // Source might have already stopped
+      }
+    });
+    this.activeSources = [];
+    this.nextStartTime = 0;
   }
 }
