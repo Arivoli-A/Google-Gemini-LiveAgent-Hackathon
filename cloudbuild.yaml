@@ -15,19 +15,16 @@ steps:
     'us-central1-docker.pkg.dev/$PROJECT_ID/live-agent-web-repo/webapp'
   ]
 
-# Deploy to Cloud Run with runtime env vars
-# USE_VERTEX=true → server.js uses Vertex AI with IAM (ADC), no API key needed
-# --session-affinity → required for WebSocket connections
-# --timeout 3600    → prevents live sessions being killed after 5 min default
+# Deploy to Cloud Run — Vertex AI IAM auth, no API key needed
 - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
   entrypoint: gcloud
   args: [
-    'run', 'deploy', 'webapp',
+    'run', 'deploy', 'google-gemini-liveagent-hackathon',
     '--image', 'us-central1-docker.pkg.dev/$PROJECT_ID/live-agent-web-repo/webapp',
     '--region', 'us-central1',
     '--platform', 'managed',
     '--allow-unauthenticated',
     '--session-affinity',
     '--timeout', '3600',
-    '--set-env-vars', 'USE_VERTEX=true,VERTEX_PROJECT=$PROJECT_ID,VERTEX_LOCATION=us-central1',
+    '--set-env-vars', 'VERTEX_PROJECT=$PROJECT_ID,VERTEX_LOCATION=us-central1',
   ]

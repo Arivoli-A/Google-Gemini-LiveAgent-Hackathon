@@ -14,21 +14,20 @@ const port = process.env.PORT || 8080;
 app.use(express.json({ limit: '20mb' }));
 app.use(express.static(path.join(__dirname, 'dist')));
 
-// AI client — uses ADC automatically on Cloud Run via Vertex AI
+// AI client — Vertex AI with ADC (automatic on Cloud Run via service account IAM)
 function getAIClient() {
   const project = process.env.VERTEX_PROJECT || process.env.GOOGLE_CLOUD_PROJECT;
   const location = process.env.VERTEX_LOCATION || 'us-central1';
-  console.log(`[AI] getAIClient project=${project} location=${location} USE_VERTEX=${process.env.USE_VERTEX}`);
+  console.log(`[AI] getAIClient project=${project} location=${location}`);
   if (!project) {
     throw new Error('No GCP project found. Set VERTEX_PROJECT env var on Cloud Run.');
   }
   return new GoogleGenAI({ vertexai: true, project, location });
 }
 
-// Debug endpoint — call /api/debug to confirm env vars are set
+// Debug endpoint
 app.get('/api/debug', (req, res) => {
   res.json({
-    USE_VERTEX: process.env.USE_VERTEX,
     VERTEX_PROJECT: process.env.VERTEX_PROJECT,
     VERTEX_LOCATION: process.env.VERTEX_LOCATION,
     GOOGLE_CLOUD_PROJECT: process.env.GOOGLE_CLOUD_PROJECT,
@@ -44,7 +43,7 @@ app.post('/api/analyze', async (req, res) => {
   try {
     const ai = getAIClient();
     const response = await ai.models.generateContent({
-      model: 'gemini-2.0-flash',
+      model: 'gemini-2.5-flash',
       contents: [{
         parts: [
           { text: prompt },
@@ -112,7 +111,7 @@ wss.on('connection', (browserWs) => {
             parameters: { type: 'OBJECT', properties: {} },
           };
           geminiSession = await ai.live.connect({
-            model: 'gemini-2.0-flash-live-preview',
+            model: 'gemini-live-2.5-flash-native-audio',
             config: {
               responseModalities: [Modality.AUDIO],
               systemInstruction: msg.systemInstruction,
