@@ -16,12 +16,24 @@ app.use(express.static(path.join(__dirname, 'dist')));
 
 // AI client — uses ADC automatically on Cloud Run via Vertex AI
 function getAIClient() {
-  return new GoogleGenAI({
-    vertexai: true,
-    project: process.env.VERTEX_PROJECT || process.env.GOOGLE_CLOUD_PROJECT,
-    location: process.env.VERTEX_LOCATION || 'us-central1',
-  });
+  const project = process.env.VERTEX_PROJECT || process.env.GOOGLE_CLOUD_PROJECT;
+  const location = process.env.VERTEX_LOCATION || 'us-central1';
+  console.log(`[AI] getAIClient project=${project} location=${location} USE_VERTEX=${process.env.USE_VERTEX}`);
+  if (!project) {
+    throw new Error('No GCP project found. Set VERTEX_PROJECT env var on Cloud Run.');
+  }
+  return new GoogleGenAI({ vertexai: true, project, location });
 }
+
+// Debug endpoint — call /api/debug to confirm env vars are set
+app.get('/api/debug', (req, res) => {
+  res.json({
+    USE_VERTEX: process.env.USE_VERTEX,
+    VERTEX_PROJECT: process.env.VERTEX_PROJECT,
+    VERTEX_LOCATION: process.env.VERTEX_LOCATION,
+    GOOGLE_CLOUD_PROJECT: process.env.GOOGLE_CLOUD_PROJECT,
+  });
+});
 
 // REST: image analysis (askInstructor)
 app.post('/api/analyze', async (req, res) => {
