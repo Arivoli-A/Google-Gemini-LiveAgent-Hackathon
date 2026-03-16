@@ -77,7 +77,6 @@ gcloud run deploy artmaster-ai \
 
 ## 🔍 Findings & Learnings
 
-- **Model Naming Conventions**: During development, it was discovered that using `-latest` aliases (e.g., `gemini-3-flash-latest`) can sometimes lead to 404 errors in preview environments. Explicitly using `-preview` versions (e.g., `gemini-3-flash-preview`) ensured stability.
 - **Live Session Race Conditions**: Initializing the microphone and camera streams inside the `onopen` callback of the Live API can lead to race conditions where the session object isn't yet fully assigned to a React `ref`. Moving the initialization logic to follow the resolution of the `connect` promise proved more robust.
 - **Audio Resampling**: The Gemini Live API expects 16kHz PCM input but returns 24kHz PCM output. The `AudioManager` had to be specifically tuned to handle these different sample rates within the same `AudioContext` to prevent "chipmunk" or distorted audio.
 - **Prompt Engineering for Mentorship**: Designing the `systemInstruction` to be "warm and proactive" significantly improved user engagement. Instructing the AI to explain the "why" behind color mixing advice made the tool feel more like an educational platform than just a drawing app.
